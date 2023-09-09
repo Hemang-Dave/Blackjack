@@ -1,0 +1,236 @@
+/* 
+   This is the code for ESP32 on the bot, follow the steps on how to upload the code on ESP32  
+                                 *****IMPORTANT*****
+                     The code is incomplete and contains fill in the blanks 
+                      You need to fill in the blanks at appropriate places 
+   
+*/
+
+#include <WiFi.h>
+#include <esp_now.h>
+
+// Define a structure to hold IMU (Inertial Measurement Unit) data
+typedef struct {
+  float gx, gy, gz;
+} IMUData;
+
+IMUData myMessage; // Create a variable to store received IMU data
+int cmd = 0;       // Initialize motor control command variable
+int spd = 0;       // Initialize motor speed variable
+
+// Function to handle received data from another device
+void onDataReceiver(const uint8_t* mac, const uint8_t* incomingData, int len) {
+
+  // Copy the received data into the myMessage variable
+  memcpy(&myMessage, incomingData, sizeof(myMessage));
+  
+  }
+
+
+
+// Function to update motor control based on received IMU data
+void updateMotorControl() {
+  float gx = myMessage.gx;
+  float gy = myMessage.gy;
+  float gz = myMessage.gz;
+
+  // Motor control logic based on IMU data
+  if ((gz != 0) && (gx != 0) && (abs(gy) < 2)) {
+    spd = constrain(abs(map((atan2(gx, gz) * 180 / PI), 0, 90, 0, 255)), 0, 255);
+    cmd = (gx > 0) ? 1 : 2; // Forward or backward
+  } else if ((gz != 0) && (gy != 0) && (abs(gx) < 2)) {
+    spd = constrain(abs(map((atan2(gy, gz) * 180 / PI), 0, 90, 0, 255)), 0, 255);
+    cmd = (gy > 0) ? 3 : 4; // Right or left
+  } else {
+    cmd = 0; // Stop
+    spd = 0;
+  }
+
+  // Adjust motor speed thresholds
+  if (spd > 60 && spd < 150) {
+    spd = 150;
+  }
+  if (spd > 150 && spd < 255) {
+    spd = 255;
+  }
+
+  // Display motor control information
+  Serial.print("cmd: ");
+  Serial.print(cmd);   // Display motor command
+  Serial.print(", speed: ");
+  Serial.println(spd); // Display motor speed
+}
+
+// Pin assignments for motor control
+// These pins are the Enable pins of the L298N motor driver which connects to esp32 gpio pins to implement the PWM function
+
+const int ENA = 13;  // choose the GPIO pin of esp32;
+const int ENB = 25;  // choose the GPIO pin of esp32;
+
+// These pins are the input pins of l298N on the left side
+const int IN1 = 12;  // Choose your GPIO pin of esp32 for the input 1
+const int IN2 = 14;  // Choose your GPIO pin of esp32 for the input 2
+
+// These pins are the input pins of l298N on the right side
+const int IN3 = 27;  // Choose your GPIO pin of esp32 for the input 3
+const int IN4 = 26;  // Choose your GPIO pin of esp32 for the input 4
+
+/* The following commented code setup is valid for attaching an ultrasonic sensor to the bot
+const int trigPin=5;
+const int echoPin=18;
+float distanceCm;
+long duration;
+#define SOUND_SPEED 0.034
+#define CM_TO_INCH 0.393701
+*/
+
+// Setup function
+void setup() {
+  pinMode(2, OUTPUT);
+//  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output    FOR ULTRASONIC SENSOR
+//  pinMode(echoPin, INPUT); // Sets the echoPin as an Input      FOR ULTRASONIC SENSOR
+  Serial.begin(115200);
+  WiFi.mode(WIFI_STA);
+
+  Serial.println("Setup started");
+
+  // Configure motor control pins as outputs
+  pinMode(ENA, OUTPUT);
+  pinMode(IN1, OUTPUT);    //fill in the blanks 
+  pinMode(IN2, OUTPUT);
+  pinMode(ENB, OUTPUT);    //fill in the blanks   
+  pinMode(IN3, OUTPUT);    //fill in the blanks 
+  pinMode(IN4, OUTPUT);
+
+  Serial.print("Mac Address: ");
+  Serial.print(WiFi.macAddress());
+  Serial.println(" ESP32 ESP-Now Broadcast");
+
+  // Initialize ESP-NOW communication
+  if (esp_now_init() != 0) {
+    Serial.println("Problem during ESP-NOW init");
+    return;
+  }
+
+  // Register the data receiver callback function
+  esp_now_register_recv_cb(onDataReceiver);
+}
+
+// Function to apply motor control based on command and speed
+void applyMotorControl() {
+
+/* The following commented code is to recieve data from the ultrasonic sensor
+    // Clears the trigPin
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  // Sets the trigPin on HIGH state for 10 micro seconds
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  
+  // Reads the echoPin, returns the sound wave travel time in microseconds
+  duration = pulseIn(echoPin, HIGH);
+  
+  // Calculate the distance
+  distanceCm = duration * SOUND_SPEED/2;
+  Serial.print("Distance (cm): ");
+  Serial.println(distanceCm);
+
+
+The following code is to check if distance from obstacle is less than 10cm and to act accordingly. Not required if bot is made without using ultrasonic distance sensor
+  if (distanceCm<10){
+      switch (cmd){
+      case 1:  // Forward
+      break;
+    case 2:  // Backward
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, HIGH);
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, HIGH);
+      break;
+    case 3:  // Right IN1,IN2 are on right hand side
+      digitalWrite(IN3, HIGH);
+      digitalWrite(IN4, LOW);
+      digitalWrite(IN2, HIGH);
+      digitalWrite(IN1, LOW);
+      break;
+    case 4:  // Left
+      digitalWrite(IN1, HIGH);
+      digitalWrite(IN2, LOW);
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, HIGH);
+      break;
+    default:  // Stop
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, LOW);
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, LOW);
+      spd = 0;
+      break;
+    
+      }
+  digitalWrite(2, HIGH); // sets the votage on pin 2 as high which turns on the led
+  delay(100);       // adds a delay of 500ms for the next line to be read     
+  digitalWrite(2, LOW);    // sets the votage on pin 2 as low which turns off the led
+  delay(100); 
+  }
+
+
+The following code is to check the alternate case i.e. distance from obstacle >=10cm
+NOTE: An extra curly bracket is required at the end of this else if statement for the code to be valid(concerned bracket has been commented below)
+else if (distanceCm>=10){
+  Serial.print("Entered case 2");  
+*/
+  switch (cmd) {
+
+    // You have to develop the logic that, when the IMU is tilted front to go forward, Then the esp32 executes the following commands
+    // Refer to get electrified slides for more help
+    case 1:  // Forward
+      digitalWrite(IN1, HIGH);
+      digitalWrite(IN2, LOW);
+      digitalWrite(IN3, HIGH);
+      digitalWrite(IN4, LOW);
+      break;
+    case 2:  // Backward
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, HIGH);
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, HIGH);
+      break;
+    case 3:  // Right IN1,IN2 are on right hand side
+      digitalWrite(IN3, HIGH);
+      digitalWrite(IN4, LOW);
+      digitalWrite(IN2, HIGH);
+      digitalWrite(IN1, LOW);
+      break;
+    case 4:  // Left
+      digitalWrite(IN1, HIGH);
+      digitalWrite(IN2, LOW);
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, HIGH);
+      break;
+    default:  // Stop
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, LOW);
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, LOW);
+      spd = 0;
+      break;
+  }
+//} NOTE:   extra bracket for else if statement
+  // Continuously update and apply motor control
+
+  // Apply the calculated motor speed to both motors
+  // fill in the blanks to finalize the code
+  analogWrite(ENA, spd);
+  analogWrite(ENB, spd);
+}
+
+
+// Main loop
+void loop() {
+  updateMotorControl();
+  applyMotorControl();
+
+  delay(100); // Delay to control loop speed
+}
